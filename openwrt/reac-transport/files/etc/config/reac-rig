@@ -1,0 +1,28 @@
+# /etc/config/reac-rig — REAC re-pacer launch config (fabric owned elsewhere).
+#
+# This file drives ONLY the reac-repacer daemon. The fabric — gretap tunnel,
+# its 8021q VLAN sub-interfaces, br-lan membership and the L2 return-path drop —
+# is owned natively by netifd/fw4 (see /etc/config/network and
+# /etc/nftables.d/10-reac.nft), NOT by this daemon. The procd init below adds no
+# topology: no `ip link`, no `nomaster`, no `bridge vlan`.
+#
+# Fingerprint-free: the AP/STA role (`bcast_only`) ships blank and is filled
+# on-device at install time from the box's wireless mode by
+# /etc/uci-defaults/97-reac-role.
+
+config reac 'repacer'
+	option enabled '1'
+	option wait_iface 'reactap.11'   # gate: don't launch until the fabric is up
+	option cpu '2'                   # real-time pacing core (isolate from NIC IRQ core)
+	option prefill_ms '20'           # startup buffer (ms); drains to the link's floor
+	option servo_clamp_ppm '0'       # frozen output clock; PLL trims sub-ppm, no servo rail
+	option pll '1'                   # hold-then-correct lock + fast-detect + transition-mute
+	option forward_only '1'          # de-jitter tunnel->stagebox only (validated relay mode)
+	# bcast_only: de-jitter only the master broadcast. Set ONLY on the
+	# STA/downstream box (reac2). Filled at install from the wireless mode by
+	# 97-reac-role (mode 'sta' -> 1, mode 'ap' -> 0); ships blank.
+	option bcast_only ''
+	# port pairs: 'reactap.X:lanY' (tunnel side : stagebox side). VID 13 is
+	# provisioned in the fabric but not paced (only 2 ports carry live REAC).
+	list port 'reactap.11:lan1'
+	list port 'reactap.12:lan2'

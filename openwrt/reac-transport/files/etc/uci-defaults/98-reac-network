@@ -1,0 +1,86 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Pau Aliagas <linuxnow@gmail.com>
+#
+# Idempotently MERGE the declarative REAC-over-WDS fabric into the live
+# /etc/config/network (we never ship a whole network file — that would clobber
+# site config). Adds, only if absent:
+#   - the gretap 'reactap' interface (ipaddr/peeraddr filled by 99-reac-gretap-peer)
+#   - three 8021q sub-interface 'device' stanzas: reactap.11/.12/.13
+#   - the three reactap.X ports + MTU 1700 on the existing br-lan bridge device
+#   - the reactap.X tagged member on each REAC bridge-vlan (11/12/13)
+#
+# Fingerprint-free: NO rig IPs here. Re-runnable: every change is guarded so a
+# second run is a no-op. Runs once via uci-defaults, then self-removes.
+. /lib/functions.sh
+
+# ---- (A) gretap tunnel (addresses filled later by 99-reac-gretap-peer) -------
+if [ -z "$(uci -q get network.reactap)" ]; then
+	uci -q set network.reactap='interface'
+	uci -q set network.reactap.proto='gretap'
+	uci -q set network.reactap.tunlink='lan'
+	uci -q set network.reactap.ttl='64'
+	uci -q set network.reactap.mtu='1500'
+	uci -q set network.reactap.defaultroute='0'
+	uci -q set network.reactap.delegate='0'
+fi
+
+# ---- (B) three 8021q sub-interfaces of reactap --------------------------------
+# 'config device' sections are anonymous; find one by name, create if missing.
+reac_dev_by_name() {
+	local sid name
+	for sid in $(uci -q show network | sed -n "s/^network\.\(@device\[[0-9]*\]\)=device$/\1/p"); do
+		name="$(uci -q get "network.$sid.name")"
+		[ "$name" = "$1" ] && { echo "$sid"; return 0; }
+	done
+	return 1
+}
+
+add_8021q() {
+	local vid="$1" name="reactap.$1" sid
+	reac_dev_by_name "$name" >/dev/null && return 0
+	sid="$(uci -q add network device)"
+	uci -q set "network.$sid.type"='8021q'
+	uci -q set "network.$sid.ifname"='reactap'
+	uci -q set "network.$sid.vid"="$vid"
+	uci -q set "network.$sid.name"="$name"
+	uci -q set "network.$sid.mtu"='1500'
+}
+add_8021q 11
+add_8021q 12
+add_8021q 13
+
+# ---- (C) br-lan bridge device: add the reactap.X ports + raise MTU to 1700 ---
+brsid="$(reac_dev_by_name 'br-lan')"
+if [ -n "$brsid" ]; then
+	uci -q set "network.$brsid.mtu"='1700'
+	for p in reactap.11 reactap.12 reactap.13; do
+		uci -q get "network.$brsid.ports" | grep -qw "$p" || uci -q add_list "network.$brsid.ports"="$p"
+	done
+fi
+
+# ---- (D) REAC bridge-vlans: add the tagged reactap.X member -------------------
+# bridge-vlan sections are anonymous; match on device=br-lan + vlan=N.
+reac_bvlan_by_vid() {
+	local sid dev vlan
+	for sid in $(uci -q show network | sed -n "s/^network\.\(@bridge-vlan\[[0-9]*\]\)=bridge-vlan$/\1/p"); do
+		dev="$(uci -q get "network.$sid.device")"
+		vlan="$(uci -q get "network.$sid.vlan")"
+		[ "$dev" = "br-lan" ] && [ "$vlan" = "$1" ] && { echo "$sid"; return 0; }
+	done
+	return 1
+}
+
+add_bvlan_member() {
+	local vid="$1" member="reactap.$1:u*" sid
+	sid="$(reac_bvlan_by_vid "$vid")" || return 0
+	# -F: the member string contains '*' / ':' which are regex/word-break chars.
+	# add_list is itself dedup-idempotent; the grep is just to avoid a needless write.
+	uci -q get "network.$sid.ports" | tr ' ' '\n' | grep -qxF "$member" || uci -q add_list "network.$sid.ports"="$member"
+}
+add_bvlan_member 11
+add_bvlan_member 12
+add_bvlan_member 13
+
+uci -q commit network
+exit 0

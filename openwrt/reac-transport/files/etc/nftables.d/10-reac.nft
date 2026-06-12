@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Pau Aliagas <linuxnow@gmail.com>
+#
+# REAC L2 return-path drop. fw4 auto-sources /etc/nftables.d/*.nft on every
+# reload, so this survives `service network restart` (unlike the old imperative
+# `nft -f -` heredoc).
+#
+# The kernel bridge does the cheap raw relay in EVERY direction over the WDS
+# tunnel. The re-pacer owns exactly ONE direction — tunnel->stagebox
+# (reactap.X -> lanX) — re-delivering it de-jittered. So that one bridged
+# direction must be killed here, otherwise the stagebox would receive BOTH the
+# raw (jittery) copy from the bridge and the de-jittered copy from the re-pacer.
+#
+# The reactap.13 -> lan3 rule is harmless on the box where lan3 carries no live
+# REAC, so the same 3-line file ships on both routers (no per-box variant).
+table bridge reac {
+	chain c {
+		type filter hook forward priority 0; policy accept;
+		iifname "reactap.11" oifname "lan1" drop
+		iifname "reactap.12" oifname "lan2" drop
+		iifname "reactap.13" oifname "lan3" drop
+	}
+}

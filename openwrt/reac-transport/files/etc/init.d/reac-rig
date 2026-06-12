@@ -1,0 +1,96 @@
+#!/bin/sh /etc/rc.common
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Pau Aliagas <linuxnow@gmail.com>
+#
+# reac-rig — launch the REAC re-pacer once the netifd-owned fabric is up.
+#
+# NO fabric setup here: the gretap tunnel, its 8021q VLAN sub-interfaces, their
+# br-lan membership, the MTU and the L2 return-path nft drop are all declarative
+# now (see /etc/config/network and /etc/nftables.d/10-reac.nft). This service
+# only waits for the fabric interface to appear, then launches the daemon with
+# the validated flags. It does NO `ip link`, no `nomaster`, no `bridge vlan`.
+USE_PROCD=1
+START=99
+STOP=10
+
+REPACER=/usr/bin/reac-repacer
+
+# wait_iface is read here so it is in scope for the error path too.
+WAIT_IFACE=reactap.11
+ARGS=""
+
+build_args() {
+	local cpu prefill servo pll fwd bcast
+	config_get cpu          repacer cpu              2
+	config_get prefill      repacer prefill_ms       20
+	config_get servo        repacer servo_clamp_ppm  0
+	config_get_bool pll     repacer pll              1
+	config_get_bool fwd     repacer forward_only     1
+	config_get_bool bcast   repacer bcast_only       0
+
+	ARGS=""
+	[ "$fwd"   = "1" ] && ARGS="$ARGS --forward-only"
+	[ "$bcast" = "1" ] && ARGS="$ARGS --bcast-only"
+	[ "$pll"   = "1" ] && ARGS="$ARGS --pll"
+	ARGS="$ARGS --servo-clamp-ppm $servo --prefill-ms $prefill --cpu $cpu"
+
+	# Each 'list port' entry is already an IN:OUT pair the daemon parses
+	# directly (it splits on the colon itself), so pass it through verbatim.
+	add_port() { ARGS="$ARGS --port $1"; }
+	config_list_foreach repacer port add_port
+}
+
+wait_for_fabric() {
+	config_get WAIT_IFACE repacer wait_iface reactap.11
+	local i=0
+	while [ ! -d "/sys/class/net/$WAIT_IFACE" ]; do
+		i=$((i + 1))
+		[ "$i" -ge 60 ] && return 1
+		sleep 1
+	done
+	return 0
+}
+
+setup_etf() {
+	# ETF qdisc on each REAC OUT iface so the daemon's --etf (SCM_TXTIME) actually
+	# times egress, instead of leaving frames at sendmsg-time with SCHED_FIFO wake
+	# jitter (the phase-strict M-5000 master resamples that into granular audio).
+	# Tries HARDWARE offload (i226-class TSN NIC = the real fix); falls back to
+	# software (mt7531/mtk GMAC have no offload — still beats noqueue). See
+	# docs/REAC-REPACE-MASTER-CLOCK-LIMIT.md.
+	modprobe sch_etf 2>/dev/null
+	etf_one() {
+		local out="${1#*:}"
+		[ -n "$out" ] && [ -d "/sys/class/net/$out" ] || return 0
+		tc qdisc del dev "$out" root 2>/dev/null
+		tc qdisc add dev "$out" root etf clockid CLOCK_TAI delta 300000 offload 2>/dev/null \
+			|| tc qdisc add dev "$out" root etf clockid CLOCK_TAI delta 300000 2>/dev/null
+	}
+	config_list_foreach repacer port etf_one
+}
+
+start_service() {
+	local enabled
+	config_load reac-rig
+	config_get_bool enabled repacer enabled 1
+	[ "$enabled" = "1" ] || return 0
+
+	wait_for_fabric || { logger -t reac-rig "fabric iface $WAIT_IFACE never appeared"; return 1; }
+	build_args
+	setup_etf
+
+	procd_open_instance reac-repacer
+	# word-splitting of $ARGS is intentional (each token is one argv entry).
+	procd_set_param command $REPACER $ARGS
+	procd_set_param respawn 3600 5 5
+	procd_set_param stdout 1
+	procd_set_param stderr 1
+	procd_close_instance
+}
+
+service_triggers() {
+	procd_add_reload_trigger reac-rig
+	# Re-evaluate when the fabric iface comes up (e.g. after a network reload),
+	# so the daemon is (re)launched once reactap is back.
+	procd_add_interface_trigger "interface.*.up" reactap reload
+}

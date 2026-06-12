@@ -1,0 +1,34 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Pau Aliagas <linuxnow@gmail.com>
+#
+# Fill reac-rig.repacer.bcast_only from the box's WDS wireless role at install
+# time, so the packaged /etc/config/reac-rig ships with no role baked in.
+#   STA / downstream box  -> bcast_only 1 (de-jitter only the master broadcast)
+#   AP  / upstream box    -> bcast_only 0
+# Runs once (uci-defaults). Same fingerprint-free principle as the peer fill.
+. /lib/functions.sh
+
+# Already set by the operator? leave it.
+cur="$(uci -q get reac-rig.repacer.bcast_only)"
+[ -n "$cur" ] && exit 0
+
+role=""
+find_role() {
+	local mode
+	config_get mode "$1" mode
+	case "$mode" in
+		sta) role="sta" ;;
+		ap)  [ -z "$role" ] && role="ap" ;;
+	esac
+}
+
+config_load wireless
+config_foreach find_role wifi-iface
+
+case "$role" in
+	sta) uci -q set reac-rig.repacer.bcast_only='1'; uci -q commit reac-rig ;;
+	ap)  uci -q set reac-rig.repacer.bcast_only='0'; uci -q commit reac-rig ;;
+	*)   echo "reac: no ap/sta wifi-iface found, leaving bcast_only unset" >&2 ;;
+esac
+exit 0

@@ -1,0 +1,27 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Pau Aliagas <linuxnow@gmail.com>
+#
+# Fill the gretap local/remote from network.lan.ipaddr at install time, so the
+# packaged /etc/config/network ships with NO rig IPs. The two routers form a
+# .1<->.2 WDS pair, so the peer is just the other host of that pair. Runs once
+# (uci-defaults), then removes itself.
+. /lib/functions.sh
+
+local_ip="$(uci -q get network.lan.ipaddr)"
+[ -n "$local_ip" ] || { echo "reac: no network.lan.ipaddr, skipping gretap peer fill" >&2; exit 0; }
+
+case "$local_ip" in
+	*.1) peer_ip="${local_ip%.1}.2" ;;
+	*.2) peer_ip="${local_ip%.2}.1" ;;
+	*)   echo "reac: lan ip $local_ip not the .1/.2 WDS pair, skipping gretap peer fill" >&2; exit 0 ;;
+esac
+
+# Only fill if the reactap interface exists (98-reac-network runs first) and the
+# addresses are not already set, so re-runs are idempotent.
+if [ -n "$(uci -q get network.reactap)" ]; then
+	uci -q set network.reactap.ipaddr="$local_ip"
+	uci -q set network.reactap.peeraddr="$peer_ip"
+	uci -q commit network
+fi
+exit 0
