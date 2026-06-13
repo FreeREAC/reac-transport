@@ -22,7 +22,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=reac-rig
 PKG_VERSION:=0.1.1
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 PKG_MAINTAINER:=Pau Aliagas <linuxnow@gmail.com>
 PKG_LICENSE:=GPL-3.0-or-later
 
@@ -35,10 +35,12 @@ define Package/reac-rig
   URL:=https://github.com/linuxnow/reac-aes67
   # gre = the netifd proto handler (/lib/netifd/proto/gre.sh) that makes
   #       `proto 'gretap'` work; the load-bearing new dependency.
-  # kmod-gre = the ip_gre module; kmod-8021q = vlandev (8021q config device).
+  # kmod-gre = the ip_gre module. (8021q VLAN support is built into the kernel
+  #       on modern OpenWrt targets — there is no kmod-8021q package — so it is
+  #       NOT a dependency; depending on it makes `apk add` unresolvable.)
   # firewall4 pulls fw4 so /etc/nftables.d/*.nft is auto-sourced on reload.
   # reac-repacer = the de-jitter daemon this rig launches.
-  DEPENDS:=+reac-repacer +kmod-gre +gre +kmod-8021q +nftables +firewall4
+  DEPENDS:=+reac-repacer +kmod-gre +gre +nftables +firewall4
 endef
 
 define Package/reac-rig/description
