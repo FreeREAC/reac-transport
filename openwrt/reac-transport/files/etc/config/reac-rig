@@ -1,28 +1,43 @@
-# /etc/config/reac-rig — REAC re-pacer launch config (fabric owned elsewhere).
+# /etc/config/reac-rig — REAC re-pacer launch config (fabric owned by netifd/fw4).
 #
-# This file drives ONLY the reac-repacer daemon. The fabric — gretap tunnel,
-# its 8021q VLAN sub-interfaces, br-lan membership and the L2 return-path drop —
-# is owned natively by netifd/fw4 (see /etc/config/network and
-# /etc/nftables.d/10-reac.nft), NOT by this daemon. The procd init below adds no
-# topology: no `ip link`, no `nomaster`, no `bridge vlan`.
+# Drives ONLY the reac-repacer daemon. The fabric — gretap tunnel, its 8021q VLAN
+# sub-interfaces, br-lan membership and the L2 return-path drop — is native
+# netifd/fw4 (see /etc/config/network + /etc/nftables.d/10-reac.nft), set up by the
+# uci-defaults shims at install. This init adds NO topology.
 #
-# Fingerprint-free: the AP/STA role (`bcast_only`) ships blank and is filled
-# on-device at install time from the box's wireless mode by
-# /etc/uci-defaults/97-reac-role.
+# DIRECTIONAL role profile — clock_source / pll / pace_by_downstream / etf /
+# bcast_only — is filled on-device at install by /etc/uci-defaults/97-reac-role
+# from the box's wireless mode. These are the ear-validated rig defaults
+# (see docs/REAC-RIG-PARKED-STATE.md):
+#   AP  (master/desk side; upstream de-jitter into the phase-strict M-5000):
+#        clock_source=local  pll=1 pace_by_downstream=1 etf=1 bcast_only=0
+#   STA (box/stage side; downstream de-jitter to the PLL-tolerant stageboxes):
+#        clock_source=local-in pll=0 pace_by_downstream=0 etf=0 bcast_only=1
+# The section ships with the AP profile as a safe default; 97-reac-role flips it to
+# STA on the box. 'option role' is the fill marker (blank = not yet filled).
 
 config reac 'repacer'
 	option enabled '1'
-	option wait_iface 'reactap.11'   # gate: don't launch until the fabric is up
-	option cpu '2'                   # real-time pacing core (isolate from NIC IRQ core)
-	option prefill_ms '20'           # startup buffer (ms); drains to the link's floor
-	option servo_clamp_ppm '0'       # frozen output clock; PLL trims sub-ppm, no servo rail
-	option pll '1'                   # hold-then-correct lock + fast-detect + transition-mute
-	option forward_only '1'          # de-jitter tunnel->stagebox only (validated relay mode)
-	# bcast_only: de-jitter only the master broadcast. Set ONLY on the
-	# STA/downstream box (reac2). Filled at install from the wireless mode by
-	# 97-reac-role (mode 'sta' -> 1, mode 'ap' -> 0); ships blank.
-	option bcast_only ''
-	# port pairs: 'reactap.X:lanY' (tunnel side : stagebox side). VID 13 is
-	# provisioned in the fabric but not paced (only 2 ports carry live REAC).
+	option wait_iface 'reactap.11'    # gate: don't launch until the fabric is up
+	option cpu '2'                    # real-time pacing core (isolate from NIC IRQ core)
+	option prefill_ms '30'            # startup buffer (ms); drains to the link floor
+	option servo_clamp_ppm '0'        # frozen output clock; PLL trims sub-ppm
+	option clock_margin_ppm '8'       # PLL lock margin (ppm)
+	option detect_ms '2000'           # REAC presence detect window (ms)
+	option forward_only '1'           # de-jitter one direction (validated relay mode)
+	option etf_delta_us '300'         # default ETF early-release window (us)
+
+	option role ''                    # fill marker: ap|sta, set by 97-reac-role
+	option clock_source 'local'       # AP: local       STA: local-in
+	option pll '1'                    # AP: 1            STA: 0
+	option pace_by_downstream '1'     # AP: 1            STA: 0
+	option etf '1'                    # AP: 1            STA: 0
+	option bcast_only '0'             # AP: 0            STA: 1
+
+	# port pairs 'IN:OUT[:etf_delta_us]' (tunnel side : stagebox side : optional
+	# per-port ETF window in us). lan2 (B) carries the ear-validated 80us window on
+	# the AP; the :delta is ignored when etf=0 (STA). VID 13 (C) is provisioned and
+	# paced but idle until a third box is plugged.
 	list port 'reactap.11:lan1'
-	list port 'reactap.12:lan2'
+	list port 'reactap.12:lan2:80'
+	list port 'reactap.13:lan3'

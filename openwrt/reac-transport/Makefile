@@ -21,7 +21,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=reac-rig
-PKG_VERSION:=0.1.0
+PKG_VERSION:=0.1.1
 PKG_RELEASE:=1
 PKG_MAINTAINER:=Pau Aliagas <linuxnow@gmail.com>
 PKG_LICENSE:=GPL-3.0-or-later
@@ -85,6 +85,10 @@ endef
 define Package/reac-rig/postinst
 #!/bin/sh
 [ -n "$${IPKG_INSTROOT}" ] && exit 0
+# reac-rig is THE launcher. Make sure the standalone reac-repacer init does not
+# also start the daemon — a double-launch fights over the same raw DSA ports.
+/etc/init.d/reac-repacer disable 2>/dev/null
+/etc/init.d/reac-repacer stop 2>/dev/null
 /etc/init.d/reac-rig enable
 /etc/init.d/reac-rig start
 exit 0
