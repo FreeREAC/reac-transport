@@ -11,6 +11,10 @@
 # direction must be killed here, otherwise the stagebox would receive BOTH the
 # raw (jittery) copy from the bridge and the de-jittered copy from the re-pacer.
 #
+# The rule is unconditional: with no re-pacer running, the bridged copy is the
+# only copy, and dropping it leaves the stagebox with nothing from the master.
+# Trunking a zone raw means dropping its line here.
+#
 # The reactap.13 -> lan3 rule is harmless on the box where lan3 carries no live
 # REAC, so the same 3-line file ships on both routers (no per-box variant).
 table bridge reac {

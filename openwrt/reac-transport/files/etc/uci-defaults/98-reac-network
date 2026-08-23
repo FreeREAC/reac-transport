@@ -8,6 +8,13 @@
 #   - the gretap 'reactap' interface (ipaddr/peeraddr filled by 99-reac-gretap-peer)
 #   - three 8021q sub-interface 'device' stanzas: reactap.11/.12/.13
 #   - the three reactap.X ports + MTU 1700 on the existing br-lan bridge device
+#
+# The MTUs are the frame arithmetic: a 40-channel REAC frame is 52 + 40*36 = 1492
+# bytes, 1496 with the 802.1q tag, and gretap adds 24 (IPv4 + GRE) on top of the
+# inner Ethernet header -> 1534 on the underlay. So 1500 on reactap/reactap.X
+# (1496 fits; 40 channels is the per-connection cap) and 1700 on br-lan. The frame
+# size does not move with the sample rate -- 96 kHz doubles the packet rate, not
+# the frame -- so these numbers hold at every rate.
 #   - the reactap.X tagged member on each REAC bridge-vlan (11/12/13)
 #
 # Fingerprint-free: NO rig IPs here. Re-runnable: every change is guarded so a

@@ -38,8 +38,9 @@ define Package/reac-transport/description
   sub-interfaces and br-lan membership as native netifd UCI, plus an fw4-sourced
   bridge nft drop for the tunnel->stagebox return path. The gretap peer and the
   VLAN/bridge wiring are merged on-device at install from the box's own LAN IP, so
-  the package ships free of any site fingerprints. Pair it with reac-repacer when
-  the path crosses a jittery link (Wi-Fi).
+  the package ships free of any site fingerprints. The bridge drop assumes a
+  re-pacer owns the tunnel->stagebox direction: pair it with reac-repacer on a
+  jittery link (Wi-Fi), or drop that rule for a zone you trunk raw.
 endef
 
 # Package-owned config (preserved across upgrade).
