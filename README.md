@@ -51,11 +51,13 @@ At the 40-channel per-connection maximum:
 | --- | --- |
 | REAC frame on the segment | 1492 |
 | + 802.1q tag on the trunk | 1496 |
-| + gretap encapsulation (+4 GRE, +20 IPv4, inner Ethernet carried whole) | 1520 IP payload / 1534 on the underlay |
+| + gretap encapsulation (+4 GRE, +20 IPv4, inner Ethernet carried whole) | 1520-byte IP packet / 1534 on the underlay |
 
-That is what the shipped MTUs are for: 1500 on `reactap` and each `reactap.X`
-(1496 fits, with 4 bytes to spare, and 40 channels is the cap), 1700 on `br-lan`
-so the encapsulated frame crosses the underlay intact. A REAC frame that
+That is what the shipped MTUs are for: 1500 on `reactap` and each `reactap.X`,
+which carries the 1496-byte tagged frame without fragmenting (40 channels is the
+cap, so 1496 is the worst case), and 1700 on `br-lan` so the encapsulated frame
+crosses the underlay intact — GRE plus the tagged inner frame is 1500 bytes of IP
+payload exactly, with nothing left over. A REAC frame that
 fragments is a lost frame — there is no retransmission and no jitter buffer.
 
 Bandwidth, counting the 24 bytes of preamble, SFD, FCS and inter-frame gap that
