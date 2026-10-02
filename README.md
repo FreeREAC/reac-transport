@@ -110,16 +110,11 @@ Yes, for what it actually covers — which is narrower than "the transport".
   segment, and this package is for the case where the box is on the far side of
   something.
 
-## Build
-
-    ./scripts/build.sh                          # latest stable OpenWrt, mediatek/filogic
-    OPENWRT_RELEASE=24.10.2 ./scripts/build.sh  # pin a release
-
-The apk lands in `.build/out/`.
-
 ## Install
 
     apk add ./reac-transport-*.apk
+
+To build the apk from source, see [BUILDING.md](BUILDING.md).
 
 The uci-defaults shims run at install (and on first boot): they merge the gretap
 peer, the VLAN sub-interfaces and the bridge/firewall wiring into the box's
