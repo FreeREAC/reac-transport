@@ -35,7 +35,7 @@ BUILD='(^|[[:space:]:;&|(])(sudo[[:space:]]+)?(make|meson|cmake|ninja|rpmbuild|p
 
 if hits=$(code "$README" | grep -E "$BUILD"); then
   echo "ERROR: $README carries a build command; it belongs in BUILDING.md:"
-  printf '  %s\n' "$hits"
+  sed 's/^/  /' <<<"$hits"
   exit 1
 fi
 echo "README clean: no build command"
