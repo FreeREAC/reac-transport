@@ -1,0 +1,34 @@
+name: shell-syntax
+
+# The first-boot defaults and the build scripts parse: `sh -n` on the OpenWrt uci-defaults scripts (run by ash on the
+# router) and `bash -n` on the scripts of scripts/. Nothing is executed. Every pull request and push to main.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  syntax:
+    name: sh -n, bash -n
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: uci-defaults parse as POSIX sh
+        run: |
+          set -eu
+          for f in openwrt/reac-transport/files/etc/uci-defaults/*; do
+            echo "sh -n $f"
+            sh -n "$f"
+          done
+      - name: build scripts parse as bash
+        run: |
+          set -eu
+          for f in scripts/*.sh; do
+            echo "bash -n $f"
+            bash -n "$f"
+          done
